@@ -1,0 +1,27 @@
+[project]
+name = "agrobot"
+version = "0.1.0"
+description = "BackEnd for the Agrobot project"
+authors = [{ name = "Flexksx", email = "cristian.cretu@isa.utm.md" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas (>=2.2.3,<3.0.0)",
+    "numpy (>=2.2.4,<3.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)",
+    "pydantic (>=2.11.3,<3.0.0)",
+    "rich (>=14.0.0,<15.0.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "agrobot"
+version = "0.1.0"
+description = "BackEnd for the Agrobot project"
+packages = [{ include = "app" }]
+
+[tool.poetry.scripts]
