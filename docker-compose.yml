@@ -1,0 +1,82 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agrobot-postgres
+    environment:
+      POSTGRES_USER: agrobot
+      POSTGRES_PASSWORD: agrobot
+      POSTGRES_DB: agrobot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agrobot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: agrobot-rabbitmq
+    ports:
+      - "5672:5672" # AMQP protocol
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: agrobot
+      RABBITMQ_DEFAULT_PASS: agrobot
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: agrobot-mqtt
+    ports:
+      - "1883:1883" # MQTT protocol
+      - "9001:9001" # WebSockets
+    volumes:
+      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mosquitto_sub",
+          "-t",
+          "$$",
+          "-C",
+          "1",
+          "-i",
+          "healthcheck",
+          "-W",
+          "3",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  web:
+    build: .
+    container_name: agrobot-api
+    env_file:
+      - .env.docker
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - rabbitmq
+      - mqtt
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  mqtt_data:
+  mqtt_log:
