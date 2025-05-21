@@ -31,6 +31,20 @@ class MQTTMessageHandler:
         try:
             robot_id = payload.get("robot_id")
             location = payload.get("location", [0, 0])
+            timestamp_str = payload.get("timestamp")
+
+            # Parse timestamp if provided, otherwise use current time
+            timestamp = None
+            if timestamp_str:
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_str)
+                except ValueError:
+                    rprint(
+                        f"[yellow]Invalid timestamp format: {timestamp_str}, using current time instead[/yellow]"
+                    )
+
+            if timestamp is None:
+                timestamp = datetime.now()
 
             if not robot_id:
                 rprint("[bold red]Missing robot_id in location update[/bold red]")
@@ -48,11 +62,13 @@ class MQTTMessageHandler:
             from app.api.step.model import RobotStep
             from app.data.step.model import Step
 
-            step = RobotStep(location=(location[0], location[1]))
+            step = RobotStep(location=(location[0], location[1]), timestamp=timestamp)
             db_step = Step.from_api_model(step, robot_id)
 
             self.step_repo.create(db_step)
-            rprint(f"[green]Updated location for robot {robot_id}: {location}[/green]")
+            rprint(
+                f"[green]Updated location for robot {robot_id}: {location} at {timestamp}[/green]"
+            )
 
         except Exception as e:
             rprint(f"[bold red]Error handling location update: {str(e)}[/bold red]")
