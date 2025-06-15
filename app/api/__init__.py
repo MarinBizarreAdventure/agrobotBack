@@ -1,5 +1,5 @@
 # Import from modules directly for stable items, use lazy loading for services
-from app.api.robot.model import Robot
+from app.api.robot.dto import Robot
 from app.api.component.model import RobotComponent
 from app.data.component.model import ComponentDiagnosisState
 from app.api.action.model import Action

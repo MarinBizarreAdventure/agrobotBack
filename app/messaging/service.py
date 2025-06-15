@@ -1,15 +1,27 @@
 import os
+import pika
+import paho.mqtt.client as mqtt
 from sqlalchemy.orm import Session
 from rich import print as rprint
 from dotenv import load_dotenv
+from app.config import Config
+import logging
+from typing import Optional
 
 from app.messaging.mqtt.client import MQTTClient
 from app.messaging.mqtt.handlers import MQTTMessageHandler
 from app.messaging.rabbitmq.client import RabbitMQClient
 from app.messaging.rabbitmq.handlers import RabbitMQMessageHandler
+from app.data.robot.repository import RobotRepository
+from app.data.action.repository import ActionRepository
+from app.data.component.repository import ComponentRepository
+from app.data.step.repository import StepRepository
+from app.data.database import get_db
 
 # Load environment variables from .env file
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class MessagingService:
@@ -19,75 +31,146 @@ class MessagingService:
 
     def __init__(self, db_session: Session):
         self.db_session = db_session
-
-        # Initialize MQTT client
-        mqtt_host = os.getenv("MQTT_HOST", "localhost")
-        mqtt_port = int(os.getenv("MQTT_PORT", "1883"))
-        self.mqtt_client = MQTTClient(broker_host=mqtt_host, broker_port=mqtt_port)
-        self.mqtt_handler = MQTTMessageHandler(db_session)
-
-        # Initialize RabbitMQ client with explicit credentials from environment
-        rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
-        rabbitmq_port = int(os.getenv("RABBITMQ_PORT", "5672"))
-        rabbitmq_user = os.getenv(
-            "RABBITMQ_USER", "agrobot"
-        )  # Default to "agrobot" instead of "guest"
-        rabbitmq_pass = os.getenv(
-            "RABBITMQ_PASS", "agrobot"
-        )  # Default to "agrobot" instead of "guest"
-
-        # Log the connection details (without the password)
-        rprint(
-            f"[blue]Connecting to RabbitMQ at {rabbitmq_host}:{rabbitmq_port} with user '{rabbitmq_user}'[/blue]"
-        )
-
-        self.rabbitmq_client = RabbitMQClient(
-            host=rabbitmq_host,
-            port=rabbitmq_port,
-            username=rabbitmq_user,
-            password=rabbitmq_pass,
-        )
-        self.rabbitmq_handler = RabbitMQMessageHandler(db_session)
+        self.mqtt_client: Optional[MQTTClient] = None
+        self.rabbitmq_connection: Optional[pika.BlockingConnection] = None
+        self.rabbitmq_channel: Optional[pika.channel.Channel] = None
 
     def start(self):
-        """Start the messaging service"""
-        rprint("[bold blue]Starting messaging service...[/bold blue]")
-
-        # Set up MQTT subscriptions
-        self.mqtt_client.subscribe(
-            "robot/+/location", self.mqtt_handler.handle_location_update
-        )
-        self.mqtt_client.subscribe(
-            "robot/+/component/status", self.mqtt_handler.handle_component_status
-        )
-        self.mqtt_client.subscribe(
-            "robot/+/action/update", self.mqtt_handler.handle_action_update
-        )
-
-        # Set up RabbitMQ subscriptions
-        # Queue for command responses
-        self.rabbitmq_client.subscribe(
-            "response.commands", self.rabbitmq_handler.handle_command_response
-        )
-        # Queue for telemetry data
-        self.rabbitmq_client.subscribe(
-            "telemetry.data", self.rabbitmq_handler.handle_telemetry_data
-        )
-
-        # Start clients
-        self.mqtt_client.start()
-        self.rabbitmq_client.start()
-
-        rprint("[bold green]Messaging service started[/bold green]")
+        """Start the messaging service."""
+        try:
+            self._setup_mqtt()
+            self._setup_rabbitmq()
+            logger.info("Messaging service started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start messaging service: {str(e)}")
+            raise
 
     def stop(self):
-        """Stop the messaging service"""
-        rprint("[bold blue]Stopping messaging service...[/bold blue]")
+        """Stop the messaging service."""
+        try:
+            if self.mqtt_client:
+                self.mqtt_client.disconnect()
+            if self.rabbitmq_connection and not self.rabbitmq_connection.is_closed:
+                self.rabbitmq_connection.close()
+            logger.info("Messaging service stopped successfully")
+        except Exception as e:
+            logger.error(f"Error stopping messaging service: {str(e)}")
 
-        self.mqtt_client.stop()
-        self.rabbitmq_client.stop()
+    def _setup_rabbitmq(self):
+        """Set up RabbitMQ connection and channels"""
+        try:
+            credentials = pika.PlainCredentials(
+                Config.RABBITMQ_USER,
+                Config.RABBITMQ_PASSWORD
+            )
+            parameters = pika.ConnectionParameters(
+                host=Config.RABBITMQ_HOST,
+                port=Config.RABBITMQ_PORT,
+                credentials=credentials,
+                virtual_host='/'  # Use default virtual host
+            )
+            self.rabbitmq_connection = pika.BlockingConnection(parameters)
+            self.command_channel = self.rabbitmq_connection.channel()
+            self.command_channel.queue_declare(queue='robot_commands')
+            self.telemetry_channel = self.rabbitmq_connection.channel()
+            self.telemetry_channel.queue_declare(queue='robot_telemetry')
+            self.alert_channel = self.rabbitmq_connection.channel()
+            self.alert_channel.queue_declare(queue='robot_alerts')
+            logger.info("RabbitMQ connection established")
+        except Exception as e:
+            logger.error(f"Failed to connect to RabbitMQ: {str(e)}")
+            raise
 
-        rprint("[bold yellow]Messaging service stopped[/bold yellow]")
+    def _setup_mqtt(self):
+        """Set up MQTT client."""
+        try:
+            # Initialize repositories with the session
+            robot_repository = RobotRepository(self.db_session)
+            action_repository = ActionRepository(self.db_session)
+            component_repository = ComponentRepository(self.db_session)
+            step_repository = StepRepository(self.db_session)
+            
+            # Create message handler
+            handler = MQTTMessageHandler(
+                robot_repository=robot_repository,
+                action_repository=action_repository,
+                component_repository=component_repository,
+                step_repository=step_repository
+            )
+            
+            # Create and connect MQTT client
+            self.mqtt_client = MQTTClient(
+                broker_host=Config.MQTT_BROKER,
+                broker_port=Config.MQTT_PORT
+            )
+            
+            # Set up authentication if provided
+            if Config.MQTT_USERNAME and Config.MQTT_PASSWORD:
+                self.mqtt_client.client.username_pw_set(
+                    Config.MQTT_USERNAME,
+                    Config.MQTT_PASSWORD
+                )
+            
+            # Subscribe to topics
+            self.mqtt_client.subscribe("robots/+/heartbeat", handler.handle_message)
+            self.mqtt_client.subscribe("robots/+/telemetry", handler.handle_message)
+            self.mqtt_client.subscribe("robots/+/command_result", handler.handle_message)
+            self.mqtt_client.subscribe("robots/+/alert", handler.handle_message)
+            
+            # Start the client
+            self.mqtt_client.start()
+            logger.info("MQTT client connected successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to set up MQTT client: {str(e)}")
+            raise
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        """Callback for MQTT connection."""
+        if rc == 0:
+            rprint("[bold green]Connected to MQTT broker[/bold green]")
+            # Subscribe to topics
+            client.subscribe("robot/+/telemetry")
+            client.subscribe("robot/+/status")
+        else:
+            rprint(f"[bold red]Failed to connect to MQTT broker with code: {rc}[/bold red]")
+
+    def _on_mqtt_message(self, client, userdata, msg):
+        """Callback for MQTT messages."""
+        try:
+            # Process incoming MQTT messages
+            topic = msg.topic
+            payload = msg.payload.decode()
+            rprint(f"[blue]Received MQTT message on topic {topic}: {payload}[/blue]")
+            
+            # TODO: Process message based on topic and payload
+        except Exception as e:
+            rprint(f"[bold red]Error processing MQTT message: {str(e)}[/bold red]")
+
+    def publish_command(self, robot_id: str, command: dict):
+        """Publish a command to a robot."""
+        try:
+            if not self.rabbitmq_channel or not self.rabbitmq_channel.is_open:
+                raise RuntimeError("RabbitMQ channel is not available")
+                
+            # Add robot_id to command
+            command['robot_id'] = robot_id
+            
+            # Publish to robot_commands queue
+            self.rabbitmq_channel.basic_publish(
+                exchange='',
+                routing_key='robot_commands',
+                body=str(command),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,  # Make message persistent
+                    content_type='application/json'
+                )
+            )
+            logger.info(f"Command published for robot {robot_id}: {command}")
+            
+        except Exception as e:
+            logger.error(f"Failed to publish command: {str(e)}")
+            raise
 
     def send_command_to_robot(self, robot_id: str, command: dict) -> bool:
         """Send a command to a robot using RabbitMQ"""

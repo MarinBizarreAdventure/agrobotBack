@@ -1,4 +1,3 @@
-from app.data.action.model import Action
-from app.data.action.repository import ActionRepository
+from app.data.action.model import Action, Step
 
-__all__ = ["Action", "ActionRepository"]
+__all__ = ['Action', 'Step']

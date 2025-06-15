@@ -1,8 +1,14 @@
 import os
 from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
+from app.config import Config
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables first
 load_dotenv()
@@ -15,26 +21,32 @@ DATABASE_URL = os.getenv(
 # Log the connection URL (without password for security)
 from rich import print as rprint
 
-sanitized_url = DATABASE_URL.replace(
-    ":" + DATABASE_URL.split(":")[-2].split("@")[0] + "@",
-    ":***@",
-)
+sanitized_url = DATABASE_URL.replace("://", "://***:***@")
 rprint(f"[blue]Connecting to database: {sanitized_url}[/blue]")
 
-# Create engine
-engine = create_engine(DATABASE_URL)
+# Create SQLAlchemy engine with error handling
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_recycle=1800
+    )
+except Exception as e:
+    logger.error(f"Failed to create database engine: {str(e)}")
+    raise
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for models
+# Create base class for models
 Base = declarative_base()
 
-
-def get_db():
+def get_db() -> Session:
     """
-    Dependency function to get a database session.
-    Ensures session is closed after use.
+    Get database session.
+    Yields a session and ensures it's closed after use.
     """
     db = SessionLocal()
     try:
@@ -42,15 +54,20 @@ def get_db():
     finally:
         db.close()
 
-
 def init_db():
-    """Initialize the database schema"""
-    # Don't import modules at the top level to avoid circular imports
-    # Import them here when needed
-    import importlib
+    """
+    Initialize database by creating all tables.
+    """
+    try:
+        # Import all models to ensure they are registered with the Base
+        from app.data.models import Robot, Command, TelemetryData, Alert
+        from app.data.component.model import Component
+        from app.data.action.model import Action, Step
 
-    # Import all model modules to ensure they're registered with SQLAlchemy
-    for module in ["robot", "action", "component", "step"]:
-        importlib.import_module(f"app.data.{module}.model")
-
-    Base.metadata.create_all(bind=engine)
+        # Create all tables
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {str(e)}")
+        raise

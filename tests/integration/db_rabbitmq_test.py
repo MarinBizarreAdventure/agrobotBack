@@ -25,7 +25,7 @@ if project_root not in sys.path:
 
 # Import application modules
 from app.data.database import Base
-from app.data.robot.model import Robot
+from app.data.models import Robot
 from app.data.component.model import Component, ComponentDiagnosisState
 from app.data.action.model import Action, ActionType, ActionStatus
 from app.data.step.model import Step

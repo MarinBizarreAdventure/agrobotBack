@@ -3,10 +3,13 @@ from flasgger import Swagger
 from rich import print as rprint
 import os
 
+# Import configuration
+from app.config import Config
+
 # Environment configuration
 from dotenv import load_dotenv
 
-if os.environ.get("DOCKER_ENV") == "true":
+if Config.DOCKER_ENV == "true":
     load_dotenv(".env.docker")
     rprint("[bold blue]Running in Docker environment[/bold blue]")
 else:
@@ -58,10 +61,14 @@ def main():
 
     # Stop messaging on exit
     import atexit
-
     atexit.register(lambda: messaging_service.stop())
 
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Run the application
+    app.run(
+        host=Config.HOST,
+        port=Config.PORT,
+        debug=Config.DEBUG
+    )
 
 
 if __name__ == "__main__":
