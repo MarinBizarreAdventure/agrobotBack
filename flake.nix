@@ -60,6 +60,7 @@
           packages = [
             pythonEnv # Provides the `python` command
             poetry # Provides the `poetry` command
+            pkgs.nodejs_23
           ] ++ systemDeps;
 
           # Environment variables and commands to run when entering the shell
