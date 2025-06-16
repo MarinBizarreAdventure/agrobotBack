@@ -1,13 +1,29 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useState, useEffect } from "react"; // Added useEffect for potential dynamic data loading
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   BarChart,
   Bar,
@@ -24,7 +40,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from "recharts"
+} from "recharts";
 import {
   TrendingUp,
   TrendingDown,
@@ -36,60 +52,140 @@ import {
   Zap,
   AlertTriangle,
   CheckCircle,
-} from "lucide-react"
-import { format } from "date-fns"
+} from "lucide-react";
+import { format } from "date-fns";
 
-// Mock analytics data
-const performanceData = [
-  { date: "2024-01-01", missions: 12, efficiency: 87, uptime: 94, coverage: 145 },
-  { date: "2024-01-02", missions: 15, efficiency: 92, uptime: 96, coverage: 178 },
-  { date: "2024-01-03", missions: 8, efficiency: 78, uptime: 89, coverage: 98 },
-  { date: "2024-01-04", missions: 18, efficiency: 95, uptime: 98, coverage: 203 },
-  { date: "2024-01-05", missions: 14, efficiency: 89, uptime: 92, coverage: 167 },
-  { date: "2024-01-06", missions: 16, efficiency: 91, uptime: 95, coverage: 189 },
-  { date: "2024-01-07", missions: 11, efficiency: 85, uptime: 88, coverage: 134 },
-]
+// Import mock data
+import {
+  moldovaRobots,
+  moldovaFields,
+  moldovaMissions,
+} from "@/lib/mock/moldova-data";
+import { mockAlerts } from "@/lib/mock/alerts";
+import type { Robot, Field, Mission as MissionType, Alert } from "@/lib/types"; // Assuming Mission is named MissionType in types
 
-const robotUtilization = [
-  { robot: "AgroBot-01", active: 85, idle: 10, maintenance: 5 },
-  { robot: "AgroBot-02", active: 78, idle: 15, maintenance: 7 },
-  { robot: "AgroBot-03", active: 92, idle: 5, maintenance: 3 },
-  { robot: "AgroBot-04", active: 67, idle: 25, maintenance: 8 },
-]
+// Helper to get the primary robot, field, and mission
+const mainRobot =
+  moldovaRobots.find((r) => r.id === "agrobot-01") || moldovaRobots[0];
+const mainField =
+  moldovaFields.find((f) => f.id === "field-a7") || moldovaFields[0];
+const mainMission = mainRobot
+  ? moldovaMissions.find(
+      (m) => m.assignedRobot === mainRobot.id && m.status === "active"
+    ) || moldovaMissions.find((m) => m.assignedRobot === mainRobot.id)
+  : moldovaMissions[0];
 
-const missionTypes = [
-  { name: "Survey", value: 45, color: "#22c55e" },
-  { name: "Monitoring", value: 30, color: "#3b82f6" },
-  { name: "Analysis", value: 15, color: "#f59e0b" },
-  { name: "Inspection", value: 10, color: "#ef4444" },
-]
+// Process imported mock data for the dashboard
+const performanceData = mainMission
+  ? [
+      {
+        date: mainMission.startedAt || new Date().toISOString(),
+        missions: 1,
+        efficiency: mainMission.progress,
+        uptime:
+          mainRobot?.id === "agrobot-01"
+            ? 10 // Low uptime for degraded agrobot-01 in chart
+            : mainRobot?.telemetry?.system?.uptime
+            ? (
+                (mainRobot.telemetry.system.uptime / (24 * 60 * 60)) *
+                100
+              ).toFixed(1)
+            : 95,
+        coverage: mainField?.area || 0,
+      },
+      // Add a few more dummy points for trend illustration if needed, or keep it simple
+      {
+        date: new Date(
+          Date.parse(mainMission.startedAt || new Date().toISOString()) -
+            86400000 // Previous day
+        ).toISOString(),
+        missions: 1, // Assuming one mission for simplicity
+        efficiency: 100, // Assuming full efficiency for a completed past mission
+        uptime: mainRobot?.id === "agrobot-01" ? 12 : 96, // Slightly different low uptime for trend
+        coverage: mainField?.area || 0,
+      },
+    ]
+  : [];
 
-const fieldCoverage = [
-  { field: "Field A-7", coverage: 95, area: 25.4, missions: 12 },
-  { field: "Field B-3", coverage: 87, area: 18.7, missions: 8 },
-  { field: "Field C-1", coverage: 92, area: 31.2, missions: 15 },
-  { field: "Field D-2", coverage: 78, area: 22.1, missions: 6 },
-  { field: "Field E-5", coverage: 89, area: 28.9, missions: 10 },
-]
+const robotUtilization = mainRobot
+  ? [
+      {
+        robot: mainRobot.name,
+        active: mainRobot.status === "active" ? 100 : 0,
+        idle: mainRobot.status === "idle" ? 100 : 0,
+        maintenance:
+          mainRobot.status === "warning" ||
+          mainRobot.status === "offline" ||
+          mainRobot.status === "unknown"
+            ? 100
+            : 0,
+      },
+    ]
+  : [];
 
-const alertsData = [
-  { type: "Battery Low", count: 23, severity: "warning" },
-  { type: "GPS Signal Lost", count: 8, severity: "error" },
-  { type: "Mission Complete", count: 156, severity: "success" },
-  { type: "Weather Alert", count: 12, severity: "warning" },
-  { type: "Maintenance Due", count: 4, severity: "info" },
-]
+const missionTypesData = mainMission
+  ? [
+      {
+        name:
+          mainMission.type.charAt(0).toUpperCase() + mainMission.type.slice(1),
+        value: 1,
+        color: "#22c55e",
+      },
+    ]
+  : [];
+
+const fieldCoverageData = mainField
+  ? [
+      {
+        field: mainField.name,
+        coverage: mainField.coverage,
+        area: mainField.area,
+        missions: mainField.missions.length,
+      },
+    ]
+  : [];
+
+const alertsSummaryData = mockAlerts.reduce((acc, alert) => {
+  const existing = acc.find((a) => a.type === alert.title); // Group by title for more specific alert types
+  if (existing) {
+    existing.count += 1;
+  } else {
+    acc.push({ type: alert.title, count: 1, severity: alert.severity });
+  }
+  return acc;
+}, [] as { type: string; count: number; severity: string }[]);
 
 export function AnalyticsDashboard() {
-  const [dateRange, setDateRange] = useState<Date | undefined>(new Date())
-  const [timeRange, setTimeRange] = useState("7d")
+  const [dateRange, setDateRange] = useState<Date | undefined>(new Date());
+  const [timeRange, setTimeRange] = useState("7d");
+
+  // KPI Card Values
+  const totalMissionsKPI = mainRobot?.totalMissions || 0;
+  const avgEfficiencyKPI = mainMission?.progress || 0; // Using progress as a proxy for current mission efficiency
+
+  let fleetUptimeKPI = "N/A";
+  if (mainRobot?.uptime) {
+    fleetUptimeKPI = mainRobot.uptime; // This is a string like "4h 23m"
+  } else if (mainRobot?.telemetry?.system?.uptime) {
+    const uptimeSeconds = mainRobot.telemetry.system.uptime;
+    // Simple uptime percentage for the last 24h, assuming uptime is continuous for that period
+    fleetUptimeKPI = `${(((uptimeSeconds % 86400) / 86400) * 100).toFixed(
+      1
+    )}% (today)`;
+  }
+
+  const areaCoveredKPI = mainField?.area || 0;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h1>
-          <p className="text-muted-foreground">Comprehensive insights into your agricultural robot fleet performance</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Analytics Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Insights for {mainRobot?.name || "your fleet"}
+          </p>
         </div>
         <div className="flex gap-2">
           <Select value={timeRange} onValueChange={setTimeRange}>
@@ -111,7 +207,12 @@ export function AnalyticsDashboard() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar mode="single" selected={dateRange} onSelect={setDateRange} initialFocus />
+              <Calendar
+                mode="single"
+                selected={dateRange}
+                onSelect={setDateRange}
+                initialFocus
+              />
             </PopoverContent>
           </Popover>
           <Button variant="outline">
@@ -125,42 +226,49 @@ export function AnalyticsDashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Missions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Missions
+            </CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">94</div>
+            <div className="text-2xl font-bold">{totalMissionsKPI}</div>
             <p className="text-xs text-muted-foreground flex items-center">
+              {/* Static example, replace if dynamic trend is available */}
               <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-              +12% from last week
+              +5 from last period
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Efficiency</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Avg Efficiency
+            </CardTitle>
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">89.2%</div>
+            <div className="text-2xl font-bold">{avgEfficiencyKPI}%</div>
             <p className="text-xs text-muted-foreground flex items-center">
+              {/* Static example */}
               <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-              +3.2% from last week
+              +2% from last period
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fleet Uptime</CardTitle>
+            <CardTitle className="text-sm font-medium">Robot Uptime</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">93.4%</div>
+            <div className="text-2xl font-bold">{fleetUptimeKPI}</div>
             <p className="text-xs text-muted-foreground flex items-center">
+              {/* Static example */}
               <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
-              -1.8% from last week
+              -1% from last period
             </p>
           </CardContent>
         </Card>
@@ -171,10 +279,11 @@ export function AnalyticsDashboard() {
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1,314 ha</div>
+            <div className="text-2xl font-bold">{areaCoveredKPI} ha</div>
             <p className="text-xs text-muted-foreground flex items-center">
+              {/* Static example */}
               <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-              +8.7% from last week
+              +10 ha from last period
             </p>
           </CardContent>
         </Card>
@@ -194,19 +303,40 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Mission Performance Trends</CardTitle>
-                <CardDescription>Daily mission completion and efficiency metrics</CardDescription>
+                <CardDescription>
+                  Daily mission completion and efficiency metrics
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={performanceData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tickFormatter={(value) => format(new Date(value), "MMM dd")} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(value) =>
+                          value ? format(new Date(value), "MMM dd") : ""
+                        }
+                      />
                       <YAxis />
-                      <Tooltip labelFormatter={(value) => format(new Date(value), "PPP")} />
+                      <Tooltip
+                        labelFormatter={(value) =>
+                          value ? format(new Date(value), "PPP") : ""
+                        }
+                      />
                       <Legend />
-                      <Line type="monotone" dataKey="missions" stroke="#3b82f6" name="Missions" />
-                      <Line type="monotone" dataKey="efficiency" stroke="#22c55e" name="Efficiency %" />
+                      <Line
+                        type="monotone"
+                        dataKey="missions"
+                        stroke="#3b82f6"
+                        name="Missions"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="efficiency"
+                        stroke="#22c55e"
+                        name="Efficiency %"
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -216,16 +346,27 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Fleet Uptime & Coverage</CardTitle>
-                <CardDescription>System availability and field coverage over time</CardDescription>
+                <CardDescription>
+                  System availability and field coverage over time
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={performanceData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tickFormatter={(value) => format(new Date(value), "MMM dd")} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(value) =>
+                          value ? format(new Date(value), "MMM dd") : ""
+                        }
+                      />
                       <YAxis />
-                      <Tooltip labelFormatter={(value) => format(new Date(value), "PPP")} />
+                      <Tooltip
+                        labelFormatter={(value) =>
+                          value ? format(new Date(value), "PPP") : ""
+                        }
+                      />
                       <Legend />
                       <Area
                         type="monotone"
@@ -255,20 +396,53 @@ export function AnalyticsDashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Robot Utilization Breakdown</CardTitle>
-              <CardDescription>Time distribution across different robot states</CardDescription>
+              <CardDescription>
+                Time distribution across different robot states
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={robotUtilization} layout="horizontal">
+                  <BarChart
+                    data={robotUtilization}
+                    layout={
+                      robotUtilization && robotUtilization.length > 1
+                        ? "horizontal"
+                        : "vertical"
+                    }
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="robot" type="category" />
+                    {robotUtilization && robotUtilization.length > 1 ? (
+                      <>
+                        <XAxis type="number" />
+                        <YAxis dataKey="robot" type="category" />
+                      </>
+                    ) : (
+                      <>
+                        <XAxis dataKey="robot" type="category" />
+                        <YAxis type="number" />
+                      </>
+                    )}
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="active" stackId="a" fill="#22c55e" name="Active %" />
-                    <Bar dataKey="idle" stackId="a" fill="#eab308" name="Idle %" />
-                    <Bar dataKey="maintenance" stackId="a" fill="#ef4444" name="Maintenance %" />
+                    <Bar
+                      dataKey="active"
+                      stackId="a"
+                      fill="#22c55e"
+                      name="Active %"
+                    />
+                    <Bar
+                      dataKey="idle"
+                      stackId="a"
+                      fill="#eab308"
+                      name="Idle %"
+                    />
+                    <Bar
+                      dataKey="maintenance"
+                      stackId="a"
+                      fill="#ef4444"
+                      name="Maintenance %"
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -281,14 +455,16 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Mission Type Distribution</CardTitle>
-                <CardDescription>Breakdown of mission types over the selected period</CardDescription>
+                <CardDescription>
+                  Breakdown of mission types over the selected period
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={missionTypes}
+                        data={missionTypesData}
                         cx="50%"
                         cy="50%"
                         innerRadius={60}
@@ -296,8 +472,11 @@ export function AnalyticsDashboard() {
                         paddingAngle={5}
                         dataKey="value"
                       >
-                        {missionTypes.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        {missionTypesData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={entry.color || "#8884d8"}
+                          /> // Added fallback color
                         ))}
                       </Pie>
                       <Tooltip />
@@ -311,17 +490,31 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Mission Success Rate</CardTitle>
-                <CardDescription>Success rate trends and completion statistics</CardDescription>
+                <CardDescription>
+                  Success rate trends and completion statistics
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-green-500">94.2%</div>
-                    <div className="text-sm text-muted-foreground">Success Rate</div>
+                    <div className="text-3xl font-bold text-green-500">
+                      {mainMission && mainMission.status === "completed"
+                        ? "100%"
+                        : (mainMission?.progress || 0) + "%"}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {mainMission && mainMission.status === "completed"
+                        ? "Success Rate"
+                        : "Current Progress"}
+                    </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-blue-500">156</div>
-                    <div className="text-sm text-muted-foreground">Completed</div>
+                    <div className="text-3xl font-bold text-blue-500">
+                      {mainRobot?.totalMissions || 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Completed
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -330,7 +523,10 @@ export function AnalyticsDashboard() {
                     <span>147 missions</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-green-500 h-2 rounded-full" style={{ width: "94.2%" }}></div>
+                    <div
+                      className="bg-green-500 h-2 rounded-full"
+                      style={{ width: "94.2%" }}
+                    ></div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -339,7 +535,10 @@ export function AnalyticsDashboard() {
                     <span>9 missions</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-red-500 h-2 rounded-full" style={{ width: "5.8%" }}></div>
+                    <div
+                      className="bg-red-500 h-2 rounded-full"
+                      style={{ width: "5.8%" }}
+                    ></div>
                   </div>
                 </div>
               </CardContent>
@@ -351,19 +550,26 @@ export function AnalyticsDashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Field Coverage Analysis</CardTitle>
-              <CardDescription>Coverage statistics and mission distribution across different fields</CardDescription>
+              <CardDescription>
+                Coverage statistics and mission distribution across different
+                fields
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {fieldCoverage.map((field) => (
+                {fieldCoverageData.map((field) => (
                   <div key={field.field} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{field.field}</span>
                         <Badge variant="outline">{field.area} ha</Badge>
-                        <Badge variant="secondary">{field.missions} missions</Badge>
+                        <Badge variant="secondary">
+                          {field.missions} missions
+                        </Badge>
                       </div>
-                      <span className="text-sm font-medium">{field.coverage}%</span>
+                      <span className="text-sm font-medium">
+                        {field.coverage}%
+                      </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
@@ -383,16 +589,28 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Alert Summary</CardTitle>
-                <CardDescription>Recent alerts and system notifications</CardDescription>
+                <CardDescription>
+                  Recent alerts and system notifications
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {alertsData.map((alert) => (
-                  <div key={alert.type} className="flex items-center justify-between">
+                {alertsSummaryData.map((alert) => (
+                  <div
+                    key={alert.type}
+                    className="flex items-center justify-between"
+                  >
                     <div className="flex items-center gap-2">
-                      {alert.severity === "error" && <AlertTriangle className="h-4 w-4 text-red-500" />}
-                      {alert.severity === "warning" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
-                      {alert.severity === "success" && <CheckCircle className="h-4 w-4 text-green-500" />}
-                      {alert.severity === "info" && <Activity className="h-4 w-4 text-blue-500" />}
+                      {alert.severity === "error" && (
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                      )}
+                      {alert.severity === "warning" && (
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      )}
+                      {alert.severity === "info" && (
+                        <CheckCircle className="h-4 w-4 text-blue-500" />
+                      )}{" "}
+                      {/* Changed from success to info for variety */}
+                      {/* Add other severities if needed */}
                       <span className="font-medium">{alert.type}</span>
                     </div>
                     <Badge
@@ -400,8 +618,8 @@ export function AnalyticsDashboard() {
                         alert.severity === "error"
                           ? "destructive"
                           : alert.severity === "warning"
-                            ? "secondary"
-                            : "default"
+                          ? "secondary"
+                          : "default"
                       }
                     >
                       {alert.count}
@@ -414,48 +632,112 @@ export function AnalyticsDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>System Health Score</CardTitle>
-                <CardDescription>Overall fleet health and performance indicators</CardDescription>
+                <CardDescription>
+                  Overall fleet health and performance indicators
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-green-500">87</div>
-                  <div className="text-sm text-muted-foreground">Health Score</div>
+                  <div className="text-4xl font-bold text-green-500">
+                    {mainRobot
+                      ? (
+                          (mainRobot.components.filter(
+                            (c) => c.status === "online"
+                          ).length /
+                            mainRobot.components.length) *
+                          100
+                        ).toFixed(0)
+                      : "N/A"}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Health Score
+                  </div>
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Robot Performance</span>
                     <div className="flex items-center gap-2">
                       <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: "92%" }}></div>
+                        <div
+                          className="bg-green-500 h-2 rounded-full"
+                          style={{
+                            width: `${
+                              mainRobot?.health || avgEfficiencyKPI || 0
+                            }%`,
+                          }}
+                        ></div>{" "}
+                        {/* Using robot health or efficiency */}
                       </div>
-                      <span className="text-sm">92%</span>
+                      <span className="text-sm">
+                        {mainRobot?.health || avgEfficiencyKPI || 0}%
+                      </span>
                     </div>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Communication</span>
                     <div className="flex items-center gap-2">
                       <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: "89%" }}></div>
+                        <div
+                          className="bg-green-500 h-2 rounded-full"
+                          style={{
+                            width: `${
+                              mainRobot?.telemetry?.communication
+                                ?.signalStrength || 0
+                            }%`,
+                          }}
+                        ></div>
                       </div>
-                      <span className="text-sm">89%</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Battery Health</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: "78%" }}></div>
-                      </div>
-                      <span className="text-sm">78%</span>
+                      <span className="text-sm">
+                        {mainRobot?.telemetry?.communication?.signalStrength ||
+                          0}
+                        %
+                      </span>
                     </div>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Sensor Status</span>
                     <div className="flex items-center gap-2">
                       <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-500 h-2 rounded-full" style={{ width: "95%" }}></div>
+                        <div
+                          className="bg-green-500 h-2 rounded-full"
+                          style={{
+                            width: `${
+                              mainRobot
+                                ? (
+                                    (mainRobot.components.filter(
+                                      (c) =>
+                                        c.status === "online" &&
+                                        (c.type === "gps" ||
+                                          c.type === "camera")
+                                    ).length /
+                                      mainRobot.components.filter(
+                                        (c) =>
+                                          c.type === "gps" ||
+                                          c.type === "camera"
+                                      ).length) *
+                                    100
+                                  ).toFixed(0)
+                                : 0
+                            }%`,
+                          }}
+                        ></div>
                       </div>
-                      <span className="text-sm">95%</span>
+                      <span className="text-sm">
+                        {mainRobot
+                          ? (
+                              (mainRobot.components.filter(
+                                (c) =>
+                                  c.status === "online" &&
+                                  (c.type === "gps" || c.type === "camera")
+                              ).length /
+                                mainRobot.components.filter(
+                                  (c) => c.type === "gps" || c.type === "camera"
+                                ).length) *
+                              100
+                            ).toFixed(0)
+                          : 0}
+                        %
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -465,5 +747,5 @@ export function AnalyticsDashboard() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }

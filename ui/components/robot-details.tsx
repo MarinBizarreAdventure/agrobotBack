@@ -1,11 +1,17 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState, useEffect } from "react"; // Added useEffect
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Battery,
   Clock,
@@ -22,19 +28,40 @@ import {
   Cpu,
   HardDrive,
   Wifi,
-} from "lucide-react"
-import Link from "next/link"
-import { moldovaRobots } from "@/lib/mock/moldova-data"
-import { TelemetryChart } from "@/components/telemetry-chart"
-import { LeafletMap } from "@/components/leaflet-map"
+} from "lucide-react";
+import Link from "next/link";
+import { moldovaRobots } from "@/lib/mock/moldova-data"; // This will be the initial state
+import { getLiveRobot } from "@/lib/mock/robots"; // Import the function to get live robot data
+// import { TelemetryChart } from "@/components/telemetry-chart"; // Removed as Telemetry tab is removed
+import { LeafletMap } from "@/components/leaflet-map";
 
 interface RobotDetailsProps {
-  robotId: string
+  robotId: string;
 }
 
 export function RobotDetails({ robotId }: RobotDetailsProps) {
-  const robot = moldovaRobots.find((r) => r.id === robotId)
-  const [selectedTab, setSelectedTab] = useState("overview")
+  // Initialize state with the robot from moldovaRobots, then update with live data
+  const initialRobot = moldovaRobots.find((r) => r.id === robotId);
+  const [robot, setRobot] = useState(initialRobot);
+  const [selectedTab, setSelectedTab] = useState("overview");
+
+  useEffect(() => {
+    if (robotId) {
+      // Set initial robot data
+      const foundRobot = moldovaRobots.find((r) => r.id === robotId);
+      setRobot(foundRobot);
+
+      // Then, set up an interval to fetch "live" data
+      const intervalId = setInterval(() => {
+        const liveRobotData = getLiveRobot(); // Assuming getLiveRobot always returns for 'agrobot-01' or similar
+        if (liveRobotData.id === robotId) {
+          setRobot(liveRobotData);
+        }
+      }, 2000); // Update every 2 seconds
+
+      return () => clearInterval(intervalId); // Cleanup interval on component unmount
+    }
+  }, [robotId]);
 
   if (!robot) {
     return (
@@ -51,53 +78,75 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
           <CardContent className="p-6">
             <div className="text-center">
               <h2 className="text-xl font-semibold mb-2">Robot Not Found</h2>
-              <p className="text-muted-foreground">The robot with ID "{robotId}" could not be found.</p>
+              <p className="text-muted-foreground">
+                The robot with ID "{robotId}" could not be found.
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "active":
-        return "bg-green-500"
+        return "bg-green-500";
       case "idle":
-        return "bg-yellow-500"
+        return "bg-yellow-500";
       case "warning":
-        return "bg-orange-500"
+        return "bg-orange-500";
       case "offline":
-        return "bg-red-500"
+        return "bg-red-500";
       default:
-        return "bg-gray-500"
+        return "bg-gray-500";
     }
-  }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-500">Active</Badge>
+        return <Badge className="bg-green-500">Active</Badge>;
       case "idle":
-        return <Badge variant="secondary">Idle</Badge>
+        return <Badge variant="secondary">Idle</Badge>;
       case "warning":
-        return <Badge variant="destructive">Warning</Badge>
+        return <Badge variant="destructive">Warning</Badge>;
       case "offline":
-        return <Badge variant="outline">Offline</Badge>
+        return <Badge variant="outline">Offline</Badge>;
       default:
-        return <Badge variant="outline">Unknown</Badge>
+        return <Badge variant="outline">Unknown</Badge>;
     }
-  }
+  };
 
-  // Mock component health data
-  const componentHealth = [
-    { name: "Main Motor", status: "healthy", health: 95, temperature: 42 },
-    { name: "GPS Module", status: "healthy", health: 98, temperature: 35 },
-    { name: "Camera System", status: "warning", health: 87, temperature: 48 },
-    { name: "Pixhawk Controller", status: "healthy", health: 92, temperature: 45 },
-    { name: "Radio Module", status: "warning", health: 78, temperature: 52 },
-    { name: "Battery Pack", status: "healthy", health: 85, temperature: 38 },
-  ]
+  const getComponentIcon = (status: string) => {
+    switch (status) {
+      case "online":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "warning":
+        return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+      case "offline":
+        return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      case "unknown":
+      default:
+        return <AlertTriangle className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  const getComponentBadgeVariant = (
+    status: string
+  ): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case "online":
+        return "default";
+      case "warning":
+        return "secondary"; // Or choose another appropriate variant like "destructive" if it's a critical warning
+      case "offline":
+        return "destructive";
+      case "unknown":
+      default:
+        return "outline";
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -146,7 +195,9 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{robot.speed} m/s</div>
-            <p className="text-xs text-muted-foreground">Heading: {robot.heading}°</p>
+            <p className="text-xs text-muted-foreground">
+              Heading: {robot.heading}°
+            </p>
           </CardContent>
         </Card>
 
@@ -163,32 +214,42 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Missions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Missions
+            </CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{robot.totalMissions}</div>
-            <p className="text-xs text-muted-foreground">Completed successfully</p>
+            <p className="text-xs text-muted-foreground">
+              Completed successfully
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Main Content */}
-      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4">
+      <Tabs
+        value={selectedTab}
+        onValueChange={setSelectedTab}
+        className="space-y-4"
+      >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="telemetry">Telemetry</TabsTrigger>
+          {/* <TabsTrigger value="telemetry">Telemetry</TabsTrigger> */}{" "}
+          {/* Removed */}
           <TabsTrigger value="components">Components</TabsTrigger>
           <TabsTrigger value="location">Location</TabsTrigger>
           <TabsTrigger value="missions">Mission History</TabsTrigger>
         </TabsList>
-
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Current Mission</CardTitle>
-                <CardDescription>Active mission details and progress</CardDescription>
+                <CardDescription>
+                  Active mission details and progress
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -198,7 +259,9 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                   </div>
                 </div>
                 <Progress value={67} className="h-2" />
-                <div className="text-sm text-muted-foreground">67% complete</div>
+                <div className="text-sm text-muted-foreground">
+                  67% complete
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline">
                     <Pause className="h-3 w-3 mr-1" />
@@ -219,12 +282,18 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
             <Card>
               <CardHeader>
                 <CardTitle>Robot Capabilities</CardTitle>
-                <CardDescription>Available sensors and functions</CardDescription>
+                <CardDescription>
+                  Available sensors and functions
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-2">
                   {robot.capabilities.map((capability) => (
-                    <Badge key={capability} variant="outline" className="justify-center">
+                    <Badge
+                      key={capability}
+                      variant="outline"
+                      className="justify-center"
+                    >
                       {capability}
                     </Badge>
                   ))}
@@ -236,17 +305,23 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
           <Card>
             <CardHeader>
               <CardTitle>System Health</CardTitle>
-              <CardDescription>Overall robot health and component status</CardDescription>
+              <CardDescription>
+                Overall robot health and component status
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-green-500">92%</div>
-                  <div className="text-sm text-muted-foreground">Overall Health</div>
+                  <div className="text-sm text-muted-foreground">
+                    Overall Health
+                  </div>
                 </div>
                 <div className="text-center">
                   <div className="text-3xl font-bold text-blue-500">6/6</div>
-                  <div className="text-sm text-muted-foreground">Components Online</div>
+                  <div className="text-sm text-muted-foreground">
+                    Components Online
+                  </div>
                 </div>
                 <div className="text-center">
                   <div className="text-3xl font-bold text-orange-500">2</div>
@@ -256,9 +331,9 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="telemetry" className="space-y-4">
-          <Card>
+        {/* <TabsContent value="telemetry" className="space-y-4"> */}{" "}
+        {/* Removed entire TabsContent for telemetry */}
+        {/* <Card>
             <CardHeader>
               <CardTitle>Real-time Telemetry</CardTitle>
               <CardDescription>Live sensor data and system metrics</CardDescription>
@@ -275,8 +350,8 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                 <Cpu className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">45%</div>
-                <Progress value={45} className="mt-2" />
+                <div className="text-2xl font-bold">{robot.telemetry?.system?.cpu || 0}%</div>
+                <Progress value={robot.telemetry?.system?.cpu || 0} className="mt-2" />
               </CardContent>
             </Card>
 
@@ -286,8 +361,8 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                 <HardDrive className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">67%</div>
-                <Progress value={67} className="mt-2" />
+                <div className="text-2xl font-bold">{robot.telemetry?.system?.memory || 0}%</div>
+                <Progress value={robot.telemetry?.system?.memory || 0} className="mt-2" />
               </CardContent>
             </Card>
 
@@ -297,7 +372,7 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                 <Thermometer className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">42°C</div>
+                <div className="text-2xl font-bold">{robot.telemetry?.system?.temperature || 0}°C</div>
                 <p className="text-xs text-muted-foreground">Normal range</p>
               </CardContent>
             </Card>
@@ -308,40 +383,52 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                 <Wifi className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">89%</div>
+                <div className="text-2xl font-bold">{robot.telemetry?.communication?.signalStrength || 0}%</div>
                 <p className="text-xs text-muted-foreground">Excellent</p>
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-
+          </div> */}
+        {/* </TabsContent> */}
         <TabsContent value="components" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Component Health</CardTitle>
-              <CardDescription>Individual component status and diagnostics</CardDescription>
+              <CardDescription>
+                Individual component status and diagnostics
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {componentHealth.map((component) => (
-                  <div key={component.name} className="flex items-center justify-between p-3 border rounded-lg">
+                {robot.components.map((component) => (
+                  <div
+                    key={component.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2">
-                        {component.status === "healthy" ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <AlertTriangle className="h-4 w-4 text-orange-500" />
-                        )}
+                        {getComponentIcon(component.status)}
                         <span className="font-medium">{component.name}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">{component.temperature}°C</div>
-                      <div className="flex items-center gap-2">
-                        <Progress value={component.health} className="w-20 h-2" />
-                        <span className="text-sm font-medium">{component.health}%</span>
+                      <div className="text-sm text-muted-foreground">
+                        {component.temperature !== undefined
+                          ? `${component.temperature}°C`
+                          : "N/A"}
                       </div>
-                      <Badge variant={component.status === "healthy" ? "default" : "secondary"}>
+                      <div className="flex items-center gap-2">
+                        <Progress
+                          value={component.health}
+                          className="w-20 h-2"
+                        />
+                        <span className="text-sm font-medium">
+                          {component.health}%
+                        </span>
+                      </div>
+                      <Badge
+                        variant={getComponentBadgeVariant(component.status)}
+                        className="capitalize"
+                      >
                         {component.status}
                       </Badge>
                     </div>
@@ -351,12 +438,13 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
             </CardContent>
           </Card>
         </TabsContent>
-
         <TabsContent value="location" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Current Location</CardTitle>
-              <CardDescription>Real-time position and mission path</CardDescription>
+              <CardDescription>
+                Real-time position and mission path
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="h-[500px] relative">
@@ -382,15 +470,21 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
               <CardContent className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Latitude:</span>
-                  <span className="text-sm">{robot.position.lat.toFixed(6)}</span>
+                  <span className="text-sm">
+                    {robot.position.lat.toFixed(6)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Longitude:</span>
-                  <span className="text-sm">{robot.position.lng.toFixed(6)}</span>
+                  <span className="text-sm">
+                    {robot.position.lng.toFixed(6)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Altitude:</span>
-                  <span className="text-sm">{robot.position.altitude || 0}m</span>
+                  <span className="text-sm">
+                    {robot.position.altitude || 0}m
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Heading:</span>
@@ -428,12 +522,13 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
             </Card>
           </div>
         </TabsContent>
-
         <TabsContent value="missions" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Mission History</CardTitle>
-              <CardDescription>Recent missions completed by this robot</CardDescription>
+              <CardDescription>
+                Recent missions completed by this robot
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -471,28 +566,46 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
                     completionTime: "1h 45m",
                   },
                 ].map((mission) => (
-                  <div key={mission.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div
+                    key={mission.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
                       <div
                         className={`w-3 h-3 rounded-full ${
-                          mission.status === "active" ? "bg-green-500" : "bg-gray-400"
+                          mission.status === "active"
+                            ? "bg-green-500"
+                            : "bg-gray-400"
                         }`}
                       />
                       <div>
                         <div className="font-medium">{mission.name}</div>
                         <div className="text-sm text-muted-foreground">
                           Started: {mission.startTime}
-                          {mission.status === "completed" && ` • Completed in: ${mission.completionTime}`}
-                          {mission.status === "active" && ` • ETA: ${mission.estimatedCompletion}`}
+                          {mission.status === "completed" &&
+                            ` • Completed in: ${mission.completionTime}`}
+                          {mission.status === "active" &&
+                            ` • ETA: ${mission.estimatedCompletion}`}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
-                        <Progress value={mission.progress} className="w-20 h-2" />
-                        <span className="text-sm font-medium">{mission.progress}%</span>
+                        <Progress
+                          value={mission.progress}
+                          className="w-20 h-2"
+                        />
+                        <span className="text-sm font-medium">
+                          {mission.progress}%
+                        </span>
                       </div>
-                      <Badge variant={mission.status === "active" ? "default" : "secondary"}>{mission.status}</Badge>
+                      <Badge
+                        variant={
+                          mission.status === "active" ? "default" : "secondary"
+                        }
+                      >
+                        {mission.status}
+                      </Badge>
                     </div>
                   </div>
                 ))}
@@ -506,7 +619,9 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
       <Card className="border-red-200 bg-red-50/50">
         <CardHeader>
           <CardTitle className="text-red-700">Emergency Controls</CardTitle>
-          <CardDescription className="text-red-600">Use these controls only in emergency situations</CardDescription>
+          <CardDescription className="text-red-600">
+            Use these controls only in emergency situations
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
@@ -514,11 +629,19 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
               <Square className="h-3 w-3 mr-1" />
               Emergency Stop
             </Button>
-            <Button variant="outline" size="sm" className="border-red-200 text-red-700">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700"
+            >
               <Home className="h-3 w-3 mr-1" />
               Force Return Home
             </Button>
-            <Button variant="outline" size="sm" className="border-red-200 text-red-700">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700"
+            >
               <AlertTriangle className="h-3 w-3 mr-1" />
               Cut Power
             </Button>
@@ -526,5 +649,5 @@ export function RobotDetails({ robotId }: RobotDetailsProps) {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
