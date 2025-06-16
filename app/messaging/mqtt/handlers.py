@@ -9,7 +9,16 @@ from app.data.robot.repository import RobotRepository
 from app.data.component.repository import ComponentRepository
 from app.data.action.repository import ActionRepository
 from app.data.step.repository import StepRepository
-from app.data.enums import ComponentDiagnosisState, ActionStatus, CommandStatus
+from app.data.step.model import Step
+from app.data.models import Alert
+from app.data.enums import (
+    ComponentDiagnosisState,
+    ActionStatus,
+    CommandStatus,
+    StepStatus,
+    AlertType,
+    AlertSeverity
+)
 from app.data.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -75,10 +84,10 @@ class MQTTMessageHandler:
             db_step = Step.from_api_model(step, robot_id)
 
             if self.step_repo:
-                self.step_repo.create(db_step)
-                rprint(
-                    f"[green]Updated location for robot {robot_id}: {location} at {timestamp}[/green]"
-                )
+            self.step_repo.create(db_step)
+            rprint(
+                f"[green]Updated location for robot {robot_id}: {location} at {timestamp}[/green]"
+            )
             else:
                 rprint("Step repository not available, skipping location update")
 
@@ -292,3 +301,82 @@ class MQTTMessageHandler:
 
         except Exception as e:
             logger.error(f"Error handling alert: {str(e)}")
+
+    def handle_step_completion(self, message: Dict[str, Any]) -> None:
+        """Handle step completion message."""
+        try:
+            step_id = message.get("step_id")
+            status = message.get("status")
+            result = message.get("result", {})
+            
+            if not step_id or not status:
+                logger.error("Missing required fields in step completion message")
+                return
+
+            # Get the step from database
+            db_step = self.step_repo.get_by_id(step_id)
+            if not db_step:
+                logger.error(f"Step {step_id} not found")
+                return
+
+            # Update step status
+            db_step.status = status
+            db_step.result = result
+            db_step.completed_at = datetime.utcnow()
+            
+            # Save changes
+            self.step_repo.update(db_step)
+            
+            # If step failed, create alert
+            if status == StepStatus.FAILED.value:
+                self._create_step_failure_alert(db_step, result)
+            
+            # Check if all steps are completed
+            self._check_action_completion(db_step.action_id)
+
+        except Exception as e:
+            logger.error(f"Error handling step completion: {str(e)}")
+            raise
+
+    def _create_step_failure_alert(self, step: Step, result: Dict[str, Any]) -> None:
+        """Create an alert for step failure."""
+        try:
+            alert = Alert(
+                robot_id=step.robot_id,
+                type=AlertType.STEP_FAILURE.value,
+                severity=AlertSeverity.HIGH.value,
+                message=f"Step {step.name} failed: {result.get('error', 'Unknown error')}",
+                details={
+                    "step_id": step.id,
+                    "action_id": step.action_id,
+                    "error": result.get("error"),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+            self.alert_repo.create(alert)
+        except Exception as e:
+            logger.error(f"Error creating step failure alert: {str(e)}")
+            raise
+
+    def _check_action_completion(self, action_id: str) -> None:
+        """Check if all steps in an action are completed."""
+        try:
+            # Get all steps for this action
+            steps = self.step_repo.get_by_action_id(action_id)
+            if not steps:
+                logger.warning(f"No steps found for action {action_id}")
+                return
+                
+            # Check if all steps are completed
+            all_completed = all(step.status == StepStatus.COMPLETED.value for step in steps)
+            if all_completed:
+                # Update action status
+                self.action_repo.update(action_id, {
+                    "status": ActionStatus.COMPLETED.value,
+                    "completed_at": datetime.utcnow()
+                })
+                logger.info(f"Action {action_id} completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error checking action completion: {str(e)}")
+            raise

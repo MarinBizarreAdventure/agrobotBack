@@ -32,7 +32,7 @@ class Config:
     RABBITMQ_VHOST = os.getenv("RABBITMQ_VHOST", "agrobot")
 
     # Application Configuration
-    DEBUG = os.getenv("DEBUG", "true").lower() == "true"
+    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG")
     PORT = int(os.getenv("PORT", "5000"))
     HOST = os.getenv("HOST", "0.0.0.0")

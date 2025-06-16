@@ -14,19 +14,21 @@ class Component(Base):
     component_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     robot_id = Column(String, ForeignKey("robots.robot_id"))
     name = Column(String)
-    component_type = Column(String, default=ComponentType.CUSTOM.value)  # Store as string
-    status = Column(String, default=ComponentStatus.ACTIVE.value)  # Store as string
-    diagnosis_state = Column(String, default=ComponentDiagnosisState.UNKNOWN.value)  # Store as string
+    component_type = Column(String, default=ComponentType.OTHER.value)  # Store as string
+    status = Column(String, default=ComponentStatus.OPERATIONAL.value)  # Store as string
+    diagnosis_state = Column(String, default=ComponentDiagnosisState.NORMAL.value)  # Store as string
     capabilities = Column(JSON)
     parameters = Column(JSON)
     last_maintenance = Column(DateTime)
     next_maintenance = Column(DateTime)
     health_metrics = Column(JSON)
     component_metadata = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships with fully qualified paths
-    robot = relationship("app.data.models.Robot", back_populates="components")
-    actions = relationship("app.data.action.model.Action", back_populates="component", cascade="all, delete-orphan")
+    # Relationships with string references
+    robot = relationship("Robot", back_populates="components")
+    actions = relationship("Action", back_populates="component", cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -41,7 +43,9 @@ class Component(Base):
             "last_maintenance": self.last_maintenance.isoformat() if self.last_maintenance else None,
             "next_maintenance": self.next_maintenance.isoformat() if self.next_maintenance else None,
             "health_metrics": self.health_metrics,
-            "metadata": self.component_metadata
+            "metadata": self.component_metadata,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
     @property

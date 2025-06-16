@@ -1,6 +1,8 @@
 """Robot management routes."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
+from http import HTTPStatus
+from flasgger import swag_from
 from app.data.database import SessionLocal
 from app.api.robot.service import RobotService
 from app.api.robot.dto import (
@@ -17,69 +19,166 @@ from app.api.robot.dto import (
     AlertResponse,
     PollCommandsResponse
 )
+from app.data.robot.repository import RobotRepository
+from app.api.robot.schemas import Robot
+from app.middleware.ip_verification import verify_robot_ip
 
-robot_router = Blueprint("robot", __name__)
+robot_router = Blueprint("robot", __name__, url_prefix="/api/v1")
 
 
-@robot_router.route("/robots", methods=["GET"])
+def get_robot_service():
+    session = SessionLocal()
+    try:
+        return RobotService(session)
+    finally:
+        session.close()
+
+
+@robot_router.route("/heartbeat", methods=["POST"])
+@verify_robot_ip
+@swag_from({
+    'tags': ['robot'],
+    'summary': 'Process robot heartbeat',
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': HeartbeatRequest.schema()
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Heartbeat processed successfully',
+            'schema': HeartbeatResponse.schema()
+        },
+        400: {
+            'description': 'Invalid request data',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            }
+        }
+    }
+})
+def process_heartbeat():
+    """Process a robot heartbeat."""
+    try:
+        robot_service = get_robot_service()
+        heartbeat_data = HeartbeatRequest(**request.json)
+        response = robot_service.process_heartbeat(heartbeat_data)
+        return jsonify(response.dict())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
+    except Exception as e:
+        current_app.logger.error(f"Error processing heartbeat: {str(e)}")
+        return jsonify({"error": f"Error processing heartbeat: {str(e)}"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@robot_router.route("/telemetry", methods=["POST"])
+@verify_robot_ip
+@swag_from({
+    'tags': ['robot'],
+    'summary': 'Process robot telemetry data',
+    'parameters': [
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': True,
+            'schema': TelemetryBatchRequest.schema()
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Telemetry data processed successfully',
+            'schema': TelemetryBatchResponse.schema()
+        },
+        400: {
+            'description': 'Invalid request data',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            }
+        }
+    }
+})
+def process_telemetry():
+    """Process robot telemetry data."""
+    try:
+        telemetry_data = TelemetryBatchRequest(**request.json)
+        db = SessionLocal()
+        try:
+            robot_service = RobotService(db)
+            response = robot_service.process_telemetry(telemetry_data)
+            return jsonify(response.dict())
+        finally:
+            db.close()
+    except Exception as e:
+        current_app.logger.error(f"Error processing telemetry: {str(e)}")
+        return jsonify({"error": f"Error processing telemetry: {str(e)}"}), HTTPStatus.BAD_REQUEST
+
+
+@robot_router.route("/", methods=["GET"])
+@swag_from({
+    'tags': ['robot'],
+    'summary': 'Get all robots',
+    'responses': {
+        200: {
+            'description': 'List of robots',
+            'schema': {
+                'type': 'array',
+                'items': Robot.schema()
+            }
+        }
+    }
+})
 def list_robots():
-    """
-    List all robots
-    ---
-    tags:
-      - Robots
-    responses:
-      200:
-        description: List of robots
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Robot'
-    """
-    db = SessionLocal()
-    try:
-        robot_service = RobotService(db)
-        robots = robot_service.list_robots()
-        return jsonify([robot.dict() for robot in robots])
-    finally:
-        db.close()
+    """Get all robots."""
+    robot_service = get_robot_service()
+    robots = robot_service.list_robots()
+    return jsonify([robot.dict() for robot in robots])
 
 
-@robot_router.route("/robots/<robot_id>", methods=["GET"])
+@robot_router.route("/<robot_id>", methods=["GET"])
+@swag_from({
+    'tags': ['robot'],
+    'summary': 'Get robot by ID',
+    'parameters': [
+        {
+            'name': 'robot_id',
+            'in': 'path',
+            'type': 'string',
+            'required': True,
+            'description': 'ID of the robot to retrieve'
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Robot found',
+            'schema': Robot.schema()
+        },
+        404: {
+            'description': 'Robot not found',
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'error': {'type': 'string'}
+                }
+            }
+        }
+    }
+})
 def get_robot(robot_id: str):
-    """
-    Get robot by ID
-    ---
-    tags:
-      - Robots
-    parameters:
-      - name: robot_id
-        in: path
-        schema:
-          type: string
-        required: true
-        description: UUID of the robot
-    responses:
-      200:
-        description: Robot details
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Robot'
-      404:
-        description: Robot not found
-    """
-    db = SessionLocal()
-    try:
-        robot_service = RobotService(db)
-        robot = robot_service.get_robot(robot_id)
-        if not robot:
-            return jsonify({"error": "Robot not found"}), 404
-        return jsonify(robot.dict())
-    finally:
-        db.close()
+    """Get a robot by ID."""
+    robot_service = get_robot_service()
+    robot = robot_service.get_robot(robot_id)
+    if not robot:
+      return jsonify({"error": f"Robot {robot_id} not found"}), HTTPStatus.NOT_FOUND
+    return jsonify(robot.dict())
 
 
 @robot_router.route("/robots", methods=["POST"])
@@ -124,293 +223,26 @@ def create_robot():
         return jsonify({"error": f"Error creating robot: {str(e)}"}), 400
 
 
-@robot_router.route("/api/v1/backend/register", methods=["POST"])
+@robot_router.route("/backend/register", methods=["POST"])
 def register_robot():
-    """
-    Register a new robot with the Agrobot system
-    ---
-    tags:
-      - Robot Registration
-    summary: Register a new robot
-    description: |
-      Register a new robot with the Agrobot system. This endpoint is used by robots to establish their connection with the backend.
-      
-      Example request:
-      ```json
-      {
-        "robot_id": "agrobot-rpi-001",
-        "robot_name": "AgroBot Raspberry Pi",
-        "version": "1.0.0",
-        "robot_ip_address": "192.168.1.100",
-        "robot_port": 8000,
-        "capabilities": [
-          {
-            "name": "GPS",
-            "supported": true,
-            "details": {}
-          }
-        ],
-        "location": {
-          "latitude": 47.1234,
-          "longitude": 28.5678,
-          "altitude": 100.0,
-          "timestamp": "2024-03-20T12:00:00Z"
-        },
-        "software_version": "1.0.0",
-        "metadata": {}
-      }
-      ```
-    operationId: registerRobot
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required:
-              - robot_id
-              - robot_name
-              - version
-              - robot_ip_address
-              - robot_port
-              - capabilities
-              - software_version
-            properties:
-              robot_id:
-                type: string
-                description: Unique ID of the robot
-                example: "agrobot-rpi-001"
-              robot_name:
-                type: string
-                description: Name of the robot
-                example: "AgroBot Raspberry Pi"
-              version:
-                type: string
-                description: Current software version
-                example: "1.0.0"
-              robot_ip_address:
-                type: string
-                description: Robot's current IP address
-                example: "192.168.1.100"
-              robot_port:
-                type: integer
-                description: Robot's port
-                example: 8000
-              capabilities:
-                type: array
-                description: List of robot capabilities
-                items:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                      example: "GPS"
-                    supported:
-                      type: boolean
-                      example: true
-                    details:
-                      type: object
-                      example: {}
-              location:
-                type: object
-                description: Current location if GPS fix is available
-                properties:
-                  latitude:
-                    type: number
-                    example: 47.1234
-                  longitude:
-                    type: number
-                    example: 28.5678
-                  altitude:
-                    type: number
-                    example: 100.0
-                  timestamp:
-                    type: string
-                    format: date-time
-                    example: "2024-03-20T12:00:00Z"
-              software_version:
-                type: string
-                description: Current software version
-                example: "1.0.0"
-              metadata:
-                type: object
-                description: Additional metadata
-                example: {}
-    responses:
-      200:
-        description: Registration successful
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                success:
-                  type: boolean
-                  example: true
-                message:
-                  type: string
-                  example: "Robot registered successfully"
-                robot_id:
-                  type: string
-                  example: "agrobot-rpi-001"
-                robot_config:
-                  type: object
-                  properties:
-                    heartbeat_interval:
-                      type: integer
-                      example: 30
-                    telemetry_interval:
-                      type: integer
-                      example: 60
-                    mqtt_topics:
-                      type: object
-                      properties:
-                        heartbeat:
-                          type: string
-                          example: "robots/agrobot-rpi-001/heartbeat"
-                        telemetry:
-                          type: string
-                          example: "robots/agrobot-rpi-001/telemetry"
-                        command_result:
-                          type: string
-                          example: "robots/agrobot-rpi-001/command_result"
-                        alert:
-                          type: string
-                          example: "robots/agrobot-rpi-001/alert"
-      400:
-        description: Invalid request data
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                success:
-                  type: boolean
-                  example: false
-                message:
-                  type: string
-                  example: "Invalid request data"
-                robot_id:
-                  type: string
-                  nullable: true
-                robot_config:
-                  type: object
-                  nullable: true
-      500:
-        description: Server error
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                success:
-                  type: boolean
-                  example: false
-                message:
-                  type: string
-                  example: "Internal server error"
-                robot_id:
-                  type: string
-                  nullable: true
-                robot_config:
-                  type: object
-                  nullable: true
-    """
+    """Register a new robot with the Agrobot system"""
     try:
-        if not request.is_json:
-            return jsonify({
-                "success": False,
-                "message": "Request must be JSON",
-                "robot_id": None,
-                "robot_config": None
-            }), 400
-
         register_data = RegisterRequest(**request.json)
-        db = SessionLocal()
-        try:
-            robot_service = RobotService(db)
-            response = robot_service.register_robot(register_data)
-            return jsonify(response.dict())
-        finally:
-            db.close()
+        
+        with SessionLocal() as db:
+            service = RobotService(db)
+            response = service.register_robot(register_data)
+            return jsonify(response.dict()), HTTPStatus.OK
     except Exception as e:
+        current_app.logger.error(f"Error registering robot: {str(e)}")
         return jsonify({
-            "success": False,
-            "message": f"Error registering robot: {str(e)}",
-            "robot_id": request.json.get("robot_id") if request.is_json else None,
-            "robot_config": None
-        }), 400
+            "error": f"Error registering robot: {str(e)}",
+            "message": "Failed to register robot"
+        }), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
-@robot_router.route("/api/v1/robot/heartbeat", methods=["POST"])
-def robot_heartbeat():
-    """
-    Receive robot heartbeat
-    ---
-    tags:
-      - Robot Health
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/HeartbeatRequest'
-    responses:
-      200:
-        description: Heartbeat response
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HeartbeatResponse'
-    """
-    try:
-        heartbeat_data = HeartbeatRequest(**request.json)
-        db = SessionLocal()
-        try:
-            robot_service = RobotService(db)
-            response = robot_service.process_heartbeat(heartbeat_data)
-            return jsonify(response.dict())
-        finally:
-            db.close()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@robot_router.route("/api/v1/robot/telemetry", methods=["POST"])
-def robot_telemetry():
-    """
-    Receive robot telemetry data
-    ---
-    tags:
-      - Robot Telemetry
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/TelemetryBatchRequest'
-    responses:
-      200:
-        description: Telemetry response
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TelemetryBatchResponse'
-    """
-    try:
-        telemetry_data = TelemetryBatchRequest(**request.json)
-        db = SessionLocal()
-        try:
-            robot_service = RobotService(db)
-            response = robot_service.process_telemetry(telemetry_data)
-            return jsonify(response.dict())
-        finally:
-            db.close()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@robot_router.route("/api/v1/robot/command_result", methods=["POST"])
+@robot_router.route("/command_result", methods=["POST"])
+@verify_robot_ip
 def command_result():
     """
     Receive command execution result
@@ -441,11 +273,12 @@ def command_result():
         finally:
             db.close()
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
 
 
-@robot_router.route("/api/v1/robot/alert", methods=["POST"])
-def robot_alert():
+@robot_router.route("/alert", methods=["POST"])
+@verify_robot_ip
+def process_alert():
     """
     Receive robot alert
     ---
@@ -475,10 +308,10 @@ def robot_alert():
         finally:
             db.close()
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
 
 
-@robot_router.route("/api/v1/robot/commands", methods=["GET"])
+@robot_router.route("/api/v1/backend/commands/pending", methods=["GET"])
 def poll_commands():
     """
     Poll for pending commands
@@ -499,6 +332,10 @@ def poll_commands():
           application/json:
             schema:
               $ref: '#/components/schemas/PollCommandsResponse'
+      400:
+        description: Missing robot_id
+      404:
+        description: Robot not found
     """
     robot_id = request.args.get("robot_id")
     if not robot_id:
@@ -507,7 +344,15 @@ def poll_commands():
     db = SessionLocal()
     try:
         robot_service = RobotService(db)
+        
+        # Check if robot exists
+        robot = robot_service.get_robot(robot_id)
+        if not robot:
+            return jsonify({"error": "Robot not found"}), 404
+            
         response = robot_service.get_pending_commands(robot_id)
         return jsonify(response.dict())
+    except Exception as e:
+        return jsonify({"error": f"Error polling commands: {str(e)}"}), 500
     finally:
         db.close()

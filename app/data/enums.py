@@ -6,21 +6,20 @@ class CaseInsensitiveEnum(str, Enum):
     """Base class for case-insensitive enums"""
     @classmethod
     def _missing_(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            for member in cls:
-                if member.value.lower() == value.lower():
-                    return member
+        for member in cls:
+            if member.value.lower() == value.lower():
+                return member
         return None
 
 
 class ActionType(CaseInsensitiveEnum):
     """Enum for action types"""
+    MOVE = "move"
+    SCAN = "scan"
+    COLLECT = "collect"
+    ANALYZE = "analyze"
+    REPORT = "report"
     CUSTOM = "custom"
-    MOVEMENT = "movement"
-    SENSOR_READING = "sensor_reading"
-    CALIBRATION = "calibration"
-    MAINTENANCE = "maintenance"
-    DIAGNOSTIC = "diagnostic"
 
 
 class ActionStatus(CaseInsensitiveEnum):
@@ -34,10 +33,11 @@ class ActionStatus(CaseInsensitiveEnum):
 
 class ComponentDiagnosisState(CaseInsensitiveEnum):
     """Enum for component diagnosis states"""
-    UNKNOWN = "unknown"
-    HEALTHY = "healthy"
+    NORMAL = "normal"
     WARNING = "warning"
+    ERROR = "error"
     CRITICAL = "critical"
+    UNKNOWN = "unknown"
 
 
 class RobotStatus(CaseInsensitiveEnum):
@@ -45,16 +45,16 @@ class RobotStatus(CaseInsensitiveEnum):
     ONLINE = "online"
     OFFLINE = "offline"
     BUSY = "busy"
-    ERROR = "error"
     MAINTENANCE = "maintenance"
 
 
 class ComponentStatus(CaseInsensitiveEnum):
     """Enum for component status"""
-    ACTIVE = "active"
-    INACTIVE = "inactive"
+    OPERATIONAL = "operational"
+    DEGRADED = "degraded"
+    FAILED = "failed"
     MAINTENANCE = "maintenance"
-    ERROR = "error"
+    OFFLINE = "offline"
 
 
 class CommandStatus(CaseInsensitiveEnum):
@@ -66,21 +66,60 @@ class CommandStatus(CaseInsensitiveEnum):
     CANCELLED = "cancelled"
 
 
+class CommandType(CaseInsensitiveEnum):
+    """Enum for command types"""
+    MOVE = "move"
+    GOTO = "goto"
+    ARM = "arm"
+    DISARM = "disarm"
+    SET_MODE = "set_mode"
+    CREATE_MISSION = "create_mission"
+    EXECUTE_MISSION = "execute_mission"
+    STOP = "stop"
+    PAUSE = "pause"
+    RESUME = "resume"
+    CALIBRATE = "calibrate"
+    UPDATE_FIRMWARE = "update_firmware"
+    REBOOT = "reboot"
+    SHUTDOWN = "shutdown"
+
+
 class AlertSeverity(CaseInsensitiveEnum):
     """Enum for alert severity levels"""
     INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
 
 
 class ComponentType(CaseInsensitiveEnum):
     """Enum for component types"""
+    MOTOR = "motor"
     SENSOR = "sensor"
-    ACTUATOR = "actuator"
-    CONTROLLER = "controller"
     CAMERA = "camera"
     GPS = "gps"
     BATTERY = "battery"
-    MOTOR = "motor"
-    CUSTOM = "custom" 
+    CONTROLLER = "controller"
+    ACTUATOR = "actuator"
+    OTHER = "other"
+
+
+class StepStatus(CaseInsensitiveEnum):
+    """Enum for step status"""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AlertType(CaseInsensitiveEnum):
+    """Enum for alert type"""
+    SYSTEM = "system"
+    COMPONENT = "component"
+    BATTERY = "battery"
+    LOCATION = "location"
+    STEP_FAILURE = "step_failure"
+    COMMAND_FAILURE = "command_failure"
+    OTHER = "other" 

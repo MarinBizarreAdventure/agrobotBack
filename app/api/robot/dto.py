@@ -1,11 +1,12 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
+from app.data.enums import RobotStatus, CommandStatus, AlertSeverity
 
 class RobotCapability(BaseModel):
     name: str
     supported: bool
-    details: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class Location(BaseModel):
     latitude: float
@@ -21,12 +22,14 @@ class Robot(BaseModel):
     version: str
     software_version: str
     capabilities: List[RobotCapability]
-    status: str
+    status: str = Field(default=RobotStatus.OFFLINE.value)
     last_seen: Optional[datetime] = None
     health_metrics: Optional[Dict[str, Any]] = None
-    current_location: Optional[Location] = None
+    current_location: Optional[Dict[str, Any]] = None
+    robot_metadata: Optional[Dict[str, Any]] = None
 
     class Config:
+        orm_mode = True
         from_attributes = True
 
 class RegisterRequest(BaseModel):
@@ -38,16 +41,13 @@ class RegisterRequest(BaseModel):
     capabilities: List[RobotCapability]
     location: Optional[Location] = None
     software_version: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class RegisterResponse(BaseModel):
     success: bool
     message: str
-    robot_config: Optional[Dict[str, Any]] = None
-    robot_id: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+    robot_id: str
+    robot_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class QuickHealth(BaseModel):
     cpu_percent: float
@@ -57,10 +57,10 @@ class QuickHealth(BaseModel):
     gps_fix: bool
 
 class HeartbeatRequest(BaseModel):
-    robot_id: str
+    robot_ip: str
     status: str
     timestamp: datetime
-    quick_health: QuickHealth
+    quick_health: Dict[str, Any] = Field(default_factory=dict)
 
 class HeartbeatResponse(BaseModel):
     success: bool
@@ -88,10 +88,10 @@ class SensorData(BaseModel):
 
 class TelemetryData(BaseModel):
     timestamp: datetime
-    gps: GPSData
-    attitude: AttitudeData
-    battery: BatteryData
-    sensors: SensorData
+    gps: Dict[str, Any]
+    attitude: Dict[str, Any]
+    battery: Dict[str, Any]
+    sensors: Dict[str, Any]
 
 class TelemetryBatchRequest(BaseModel):
     robot_id: str
@@ -118,7 +118,7 @@ class AlertRequest(BaseModel):
     severity: str
     message: str
     timestamp: datetime
-    details: Optional[Dict[str, Any]] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 class AlertResponse(BaseModel):
     success: bool
